@@ -33,7 +33,9 @@ HackMdApi api = new HackMdApi(webDriverEndpoint)
     GitHubUsername = GetConfig("GITHUB_USERNAME"),
     GitHubPassword = GetConfig("GITHUB_PASSWORD"),
     GitHub2FaSeed = GetConfig("GITHUB_OTP_SEED"),
-    BackupPath = GetConfig("BACKUP_PATH","/tmp/backup")
+    BackupPath = GetConfig("BACKUP_PATH","/tmp/backup"),
+    CredetialCachePath = GetConfig("CREDENTIAL_CACHE_PATH","/tmp/creds"),
+    HackMdHost = GetConfig("HACKMD_HOST"),
 };
 
 Console.WriteLine("==> Pulling notes");

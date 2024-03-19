@@ -17,19 +17,22 @@ public class HackMdApi
     public string GitHubUsername { get; set; }
     public string GitHubPassword { get; set; }
     public string GitHub2FaSeed { get; set; }
+    public string HackMdHost { get; set; }
 
     private string _sessionCookie;
     private string _crsfCookie;
     private string _useridCookie;
-    private string _ioCookie;
-    private HttpClient _client = new HttpClient();
+    private readonly HttpClient _client = new();
     private readonly string _seleniumHost;
     private readonly bool _forceAuth;
+
+    private string CredsPathFull => Path.Combine(CredetialCachePath, "cookie_cache.json");
 
     public HackMdApi(string seleniumHost, bool forceAuth = false)
     {
         _seleniumHost = seleniumHost;
         _forceAuth = forceAuth;
+        
     }
 
     private string GetTotp()
@@ -51,7 +54,7 @@ public class HackMdApi
         WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
 
         // Navigate to Notes GitHub auth
-        driver.Navigate().GoToUrl("https://notes.ethereum.org/auth/github");
+        driver.Navigate().GoToUrl($"https://{HackMdHost}/auth/github");
 
         // Login to GitHub
         IWebElement loginInput = driver.FindElement(By.Id("login_field"));
@@ -76,7 +79,7 @@ public class HackMdApi
         mfaInput.SendKeys(token);
 
         // Wait for return to HackMD
-        wait.Until(webDriver => webDriver.Url.Contains("notes.ethereum.org"));
+        wait.Until(webDriver => webDriver.Url.Contains(HackMdHost));
 
         // grab cookies
         var sessionCookie = driver.Manage().Cookies.GetCookieNamed("connect.sid");
@@ -88,7 +91,6 @@ public class HackMdApi
         _sessionCookie = sessionCookie.Value;
         _crsfCookie = driver.Manage().Cookies.GetCookieNamed("_csrf").Value;
         _useridCookie = driver.Manage().Cookies.GetCookieNamed("userid").Value;
-        //_ioCookie = driver.Manage().Cookies.GetCookieNamed("io").Value;
         
         // Close the driver
         driver.Quit();
@@ -96,10 +98,10 @@ public class HackMdApi
 
     private bool LoadCachedCookies()
     {
-        if (!File.Exists("cookie_cache.json"))
+        if (!File.Exists(CredsPathFull))
             return false;
 
-        string json = File.ReadAllText("cookie_cache.json");
+        string json = File.ReadAllText(CredsPathFull);
         CachedCookies? cookies = JsonSerializer.Deserialize<CachedCookies>(json);
 
         if (cookies == null)
@@ -129,7 +131,7 @@ public class HackMdApi
 
         string jsonString = JsonSerializer.Serialize(cookies);
         
-        File.WriteAllText("cookie_cache.json", jsonString);
+        File.WriteAllText(CredsPathFull, jsonString);
     }
    
     private string ComputeSha256Hash(string rawData)
@@ -153,7 +155,7 @@ public class HackMdApi
     {
         if (_forceAuth || !LoadCachedCookies())
         {
-            Console.WriteLine("No cached credentails. Grabbing fresh Cookies...");
+            Console.WriteLine("No cached credentials. Grabbing fresh Cookies...");
             GrabSessionCookie();
 
             StoreCachedCookies();
@@ -247,13 +249,14 @@ public class HackMdApi
     }
 
     public string BackupPath { get; set; }
+    public string CredetialCachePath { get; set; }
 
     private HttpRequestMessage CreateRequest(string path)
     {
        return new HttpRequestMessage
         {
             Method = HttpMethod.Get,
-            RequestUri = new Uri($"https://notes.ethereum.org{path}"),
+            RequestUri = new Uri($"https://{HackMdHost}{path}"),
             Headers =
             {
                 { "accept", "application/json, text/plain, */*" },
@@ -261,7 +264,7 @@ public class HackMdApi
                     "cookie",
                     $"locale=en-GB; connect.sid={_sessionCookie}; _csrf={_crsfCookie}; loginstate=true; userid={_useridCookie}"
                 },
-                { "referer", "https://notes.ethereum.org/dashboard/note" },
+                { "referer", $"https://{HackMdHost}/dashboard/note" },
                 {
                     "user-agent",
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
