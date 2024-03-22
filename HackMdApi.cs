@@ -51,7 +51,7 @@ public class HackMdApi
         options.AddArgument("--headless=new");
         
         using IWebDriver driver = new RemoteWebDriver(new Uri(_seleniumHost),options);
-        WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+        WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(120));
 
         // Navigate to Notes GitHub auth
         driver.Navigate().GoToUrl($"https://{HackMdHost}/auth/github");
