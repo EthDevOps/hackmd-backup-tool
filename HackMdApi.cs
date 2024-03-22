@@ -53,25 +53,27 @@ public class HackMdApi
         using IWebDriver driver = new RemoteWebDriver(new Uri(_seleniumHost),options);
         WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(120));
 
+        Console.WriteLine("\tNavigating to login page...");
         // Navigate to Notes GitHub auth
         driver.Navigate().GoToUrl($"https://{HackMdHost}/auth/github");
 
         // Login to GitHub
+        Console.WriteLine("\tEntering credentials...");
         IWebElement loginInput = driver.FindElement(By.Id("login_field"));
         loginInput.SendKeys(GitHubUsername);
 
         IWebElement passInput = driver.FindElement(By.Id("password"));
         passInput.SendKeys(GitHubPassword);
 
+        Console.WriteLine("\tSending login...");
         IWebElement loginBtn = driver.FindElement(By.Name("commit"));
         loginBtn.Click();
 
+        Console.WriteLine("\tWaiting for 2FA page...");
         // Wait for passkey prompt
-        wait.Until(webDriver => webDriver.Url.Contains("webauthn"));
+        wait.Until(webDriver => webDriver.Url.Contains("two-factor"));
 
-        // Navigate to enter 2FA code
-        driver.Navigate().GoToUrl("https://github.com/sessions/two-factor/app");
-
+        Console.WriteLine("\tFilling 2FA token...");
         // Grab current TOTP
         string token = GetTotp();
 
@@ -79,8 +81,10 @@ public class HackMdApi
         mfaInput.SendKeys(token);
 
         // Wait for return to HackMD
+        Console.WriteLine("\tWaiting for return to HackMD...");
         wait.Until(webDriver => webDriver.Url.Contains(HackMdHost));
 
+        Console.WriteLine("\tGrabbing delicious Cookies...");
         // grab cookies
         var sessionCookie = driver.Manage().Cookies.GetCookieNamed("connect.sid");
         if (sessionCookie == null)
