@@ -217,16 +217,8 @@ public class HackMdApi
                 // Ensure dir exists
                 Directory.CreateDirectory(catPath);
 
-                string metadataPath = Path.Combine(catPath, $"{note.shortId}.json");
-
-                if (File.Exists(metadataPath))
-                {
-                    Console.WriteLine("\t\tExisting. Skip...");
-                    ct++;
-                    continue;
-                }
-                
                 // Write metadata file
+                string metadataPath = Path.Combine(catPath, $"{note.shortId}.json");
                 await File.WriteAllTextAsync(metadataPath, JsonSerializer.Serialize(note));
 
                 // Pull note
