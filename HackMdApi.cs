@@ -161,13 +161,25 @@ public class HackMdApi
         {
             Console.WriteLine("No cached credentials. Grabbing fresh Cookies...");
             GrabSessionCookie();
-
             StoreCachedCookies();
             Console.WriteLine("Cookies cache created.");
         }
         else
         {
-            Console.WriteLine("Using cached cookies.");
+            Console.WriteLine("Testing cached cookies...");
+            var request = CreateRequest($"/api/notes?page=1");
+            var response = await _client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine("Cached credentials expired. Re-authenticating..."); 
+                GrabSessionCookie();
+                StoreCachedCookies();
+                Console.WriteLine("Cookies cache created.");
+            }
+            else
+            {
+                Console.WriteLine("Using cached cookies.");
+            }
         }
       
         // Grab notes. as long as we get new notes we increase the counter
