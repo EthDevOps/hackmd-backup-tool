@@ -6,6 +6,7 @@ name: Docker
 # documentation.
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "main" ]
     # Publish semver tags as releases.
@@ -22,7 +23,7 @@ env:
 
 jobs:
   build:
-    runs-on: ['self-hosted', 'size-s']
+    runs-on: ['self-hosted-ghrtest', 'size-s-x64']
     permissions:
       contents: read
       packages: write
