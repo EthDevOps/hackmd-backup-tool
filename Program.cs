@@ -28,6 +28,10 @@ string s3AccessKEy = GetConfig("S3_ACCESS_KEY");
 string s3SecretKey = GetConfig("S3_SECRET_KEY");
 string s3Bucket = GetConfig("S3_BUCKET");
 
+string cookieCsrf = GetConfig("COOKIE_CSRF");
+string cookieSessionId = GetConfig("COOKIE_SESSION_ID");
+string cookieUserId = GetConfig("COOKIE_USER_ID");
+
 HackMdApi api = new HackMdApi(webDriverEndpoint)
 {
     GitHubUsername = GetConfig("GITHUB_USERNAME"),
@@ -37,6 +41,11 @@ HackMdApi api = new HackMdApi(webDriverEndpoint)
     CredetialCachePath = GetConfig("CREDENTIAL_CACHE_PATH","/tmp/creds"),
     HackMdHost = GetConfig("HACKMD_HOST"),
 };
+
+if (!string.IsNullOrEmpty(cookieSessionId))
+{
+    api.SetCookieExternal(cookieCsrf, cookieSessionId, cookieUserId);
+}
 
 Console.WriteLine("==> Pulling notes");
 await api.GetAllNotes();

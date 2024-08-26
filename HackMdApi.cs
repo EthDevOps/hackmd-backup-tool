@@ -298,6 +298,15 @@ public class HackMdApi
             },
         };
     }
+
+    public void SetCookieExternal(string cookieCsrf, string cookieSessionId, string cookieUserId)
+    {
+        _crsfCookie = cookieCsrf;
+        _sessionCookie = cookieSessionId;
+        _useridCookie = cookieUserId;
+        StoreCachedCookies();
+        Console.WriteLine("Stored externally provided cookie values");
+    }
 }
 
 internal class CachedCookies
