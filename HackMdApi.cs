@@ -58,6 +58,8 @@ public class HackMdApi
         // Navigate to Notes GitHub auth
         driver.Navigate().GoToUrl($"https://{HackMdHost}/auth/github");
 
+        Thread.Sleep(10000);
+        
         // Login to GitHub
         Console.WriteLine("\tEntering credentials...");
         IWebElement loginInput = driver.FindElement(By.Id("login_field"));
