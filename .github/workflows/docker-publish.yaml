@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    runs-on: ['self-hosted-ghrtest', 'size-s-x64']
+    runs-on: ['self-hosted-ghr', 'size-s-x64']
     permissions:
       contents: read
       packages: write
