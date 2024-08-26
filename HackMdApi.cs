@@ -189,6 +189,7 @@ public class HackMdApi
         bool returnedNotes = true;
         int page = 1;
         List<NoteMeta> allNotes = new List<NoteMeta>();
+        Random random = new Random();
         
         while (returnedNotes)
         {
@@ -196,12 +197,18 @@ public class HackMdApi
             var response = await _client.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
+            if (response.Headers.Contains("aws-waf-token"))
+            {
+                Console.WriteLine("New AWS WAF token received.");
+            }
+            
             string responseBody = string.Empty;
             NotesResponse notes = null;
             try
             {
                 responseBody = await response.Content.ReadAsStringAsync();
                 notes = JsonSerializer.Deserialize<NotesResponse>(responseBody)!;
+                Console.WriteLine($"Notes grabbed: {notes.page} of {notes.total} | Limit at {notes.limit}");
             }
             catch (Exception ex)
             {
@@ -222,9 +229,12 @@ public class HackMdApi
             }
             else
             {
-                Console.WriteLine("Skipping next page.");
-                page++;
+                Console.WriteLine("Got caught be the AWS WAF. Waiting for 15 minutes before trying again...");
+                Thread.Sleep(TimeSpan.FromMinutes(15));
             }
+
+
+            Thread.Sleep(random.Next(1000, 10000));
         }
 
         Console.WriteLine("Start reading notes...");
@@ -281,20 +291,24 @@ public class HackMdApi
        return new HttpRequestMessage
         {
             Method = HttpMethod.Get,
+            Version = HttpVersion.Version20,
             RequestUri = new Uri($"https://{HackMdHost}{path}"),
             Headers =
             {
                 { "accept", "application/json, text/plain, */*" },
+                { "accept-language", "en-GB,en;q=0.5"},
                 {
                     "cookie",
-                    $"locale=en-GB; connect.sid={_sessionCookie}; _csrf={_crsfCookie}; loginstate=true; userid={_useridCookie}"
+                    $"locale=en-GB; indent_type=space; space_units=4; keymap=sublime; connect.sid={_sessionCookie}; _csrf={_crsfCookie}; loginstate=true; userid={_useridCookie}; aws-waf-token=bdbb1976-bc58-4db7-a6a8-430e10d3c9c6:AQoAlYZUH3wHAQAA:ptGNgPAiUpz5V1UyRnJAUP92xWgXrhvNPkNgZy2vD2k6g0oBUL5IxnHJlwxh3tvbUfEijkKsKqT1HBzGWk4LndJ5+r9EFo+Sh/XA42S0bYz9cH3D7chtwhtpXgecbQynGi3MHmVO2pR5P0X/QFvnyK2479gyCgfISM+MyyeDZMxsrnyY8wBOKBfApJwelijsqvRehbQ9/Bz8ZkQjuUa5lsIx8a76XQIpZCJz97gBVoa23LrNluPjS9Diog=="
                 },
-                { "referer", $"https://{HackMdHost}/dashboard/note" },
+                { "referer", $"https://{HackMdHost}/dashboard/note/11" },
                 {
                     "user-agent",
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
                 },
-                { "x-xsrf-token", "FTxa1K8n-Bb877mY1mqBvZJNiWRqUf4sIqh0" },
+                {"if-none-match", "W/\"69b7-zbbviSdQ+/166WDeKO4GtTKrp24\""},
+                { "x-xsrf-token", "Hw2iROpR-yJZeYLSl2UlY_Kw1EQ2FyWDsAFI" }
+                
             },
         };
     }

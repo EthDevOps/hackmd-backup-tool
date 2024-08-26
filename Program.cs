@@ -2,11 +2,11 @@
 
 using HackMdBackup;
 
-string GetConfig(string envName, string defaultValue = "")
+string GetConfig(string envName, string defaultValue = "",bool isOptional = false)
 {
     string? envVar = Environment.GetEnvironmentVariable(envName);
         
-    if(string.IsNullOrEmpty(envVar) && string.IsNullOrEmpty(envVar))
+    if(!isOptional && string.IsNullOrEmpty(envVar) && string.IsNullOrEmpty(defaultValue))
     {
         throw new Exception($"Missing configuration env: {envName}");
     }
@@ -16,10 +16,13 @@ string GetConfig(string envName, string defaultValue = "")
 
 var pingHttp = new HttpClient();
 
-string hcUrl = GetConfig("HEALTHCHECK_URL");
-await pingHttp.GetAsync($"{hcUrl}/start");
+string hcUrl = GetConfig("HEALTHCHECK_URL", isOptional: true);
+if (!String.IsNullOrEmpty(hcUrl))
+{
+    await pingHttp.GetAsync($"{hcUrl}/start");
+}
 
-string gpgPublicKey = GetConfig("GPG_PUBKEY_FILE");
+string gpgPublicKey = GetConfig("GPG_PUBKEY_FILE","foo");
 string tarFile = GetConfig("BACKUP_TAR_PATH","/tmp/backup.tar.gz");
 string webDriverEndpoint = GetConfig("WEBDRIVER_URL", "http://localhost:4444");
 
@@ -37,8 +40,8 @@ HackMdApi api = new HackMdApi(webDriverEndpoint)
     GitHubUsername = GetConfig("GITHUB_USERNAME"),
     GitHubPassword = GetConfig("GITHUB_PASSWORD"),
     GitHub2FaSeed = GetConfig("GITHUB_OTP_SEED"),
-    BackupPath = GetConfig("BACKUP_PATH","/tmp/backup"),
-    CredetialCachePath = GetConfig("CREDENTIAL_CACHE_PATH","/tmp/creds"),
+    BackupPath = GetConfig("BACKUP_PATH","."),
+    CredetialCachePath = GetConfig("CREDENTIAL_CACHE_PATH","."),
     HackMdHost = GetConfig("HACKMD_HOST"),
 };
 
