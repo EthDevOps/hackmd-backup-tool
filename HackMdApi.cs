@@ -9,6 +9,7 @@ using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Remote;
 using OpenQA.Selenium.Support.UI;
 using OtpNet;
+using ZstdSharp.Unsafe;
 
 namespace HackMdBackup;
 
@@ -202,7 +203,7 @@ public class HackMdApi
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error during list fetch: {ex.Message} == {responseBody}");
+                Console.WriteLine($"Error during list fetch: {ex.Message} == {response.StatusCode}|{response.ReasonPhrase} [{responseBody}]");
             }
 
             if (notes is { result.Count: 0 })
@@ -215,6 +216,11 @@ public class HackMdApi
             {
                 allNotes.AddRange(notes.result);
                 Console.WriteLine($"Page {page}: Got {notes.result.Count} - Total {allNotes.Count}");
+                page++;
+            }
+            else
+            {
+                Console.WriteLine("Skipping next page.");
                 page++;
             }
         }
