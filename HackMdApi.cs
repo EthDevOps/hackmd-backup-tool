@@ -192,17 +192,26 @@ public class HackMdApi
             var request = CreateRequest($"/api/notes?page={page}");
             var response = await _client.SendAsync(request);
             response.EnsureSuccessStatusCode();
-            
-            string responseBody = await response.Content.ReadAsStringAsync();
-            NotesResponse notes = JsonSerializer.Deserialize <NotesResponse>(responseBody)!;
 
-            if (notes.result.Count == 0)
+            string responseBody = string.Empty;
+            NotesResponse notes = null;
+            try
+            {
+                responseBody = await response.Content.ReadAsStringAsync();
+                notes = JsonSerializer.Deserialize<NotesResponse>(responseBody)!;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during list fetch: {ex.Message} == {responseBody}");
+            }
+
+            if (notes is { result.Count: 0 })
             {
                 // No more notes
                 returnedNotes = false;
                 Console.WriteLine("Got all note metadata.");
             }
-            else
+            else if (notes != null)
             {
                 allNotes.AddRange(notes.result);
                 Console.WriteLine($"Page {page}: Got {notes.result.Count} - Total {allNotes.Count}");
