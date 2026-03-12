@@ -9,7 +9,6 @@ using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Remote;
 using OpenQA.Selenium.Support.UI;
 using OtpNet;
-using ZstdSharp.Unsafe;
 
 namespace HackMdBackup;
 
@@ -19,21 +18,29 @@ public class HackMdApi
     public string GitHubPassword { get; set; }
     public string GitHub2FaSeed { get; set; }
     public string HackMdHost { get; set; }
-
     private string _sessionCookie;
     private string _crsfCookie;
     private string _useridCookie;
     private readonly HttpClient _client = new();
     private readonly string _seleniumHost;
     private readonly bool _forceAuth;
+    private readonly bool _testMode;
 
     private string CredsPathFull => Path.Combine(CredetialCachePath, "cookie_cache.json");
 
-    public HackMdApi(string seleniumHost, bool forceAuth = false)
+    public HackMdApi(string seleniumHost, bool forceAuth = false, bool testMode = false)
     {
         _seleniumHost = seleniumHost;
         _forceAuth = forceAuth;
-        
+        _testMode = testMode;
+    }
+
+    private void WaitForInput(string stepDescription)
+    {
+        if (!_testMode) return;
+        Console.WriteLine($"\t[TEST] {stepDescription}");
+        Console.WriteLine("\t[TEST] Press ENTER to continue...");
+        Console.ReadLine();
     }
 
     private string GetTotp()
@@ -45,62 +52,225 @@ public class HackMdApi
         return totp.ComputeTotp();
     }
 
-    private void GrabSessionCookie()
+    private IWebDriver CreateDriver()
     {
-        // Instantiate a ChromeDriver
         var options = new ChromeOptions();
-        options.AddArgument("--headless=new");
-        
-        using IWebDriver driver = new RemoteWebDriver(new Uri(_seleniumHost),options);
-        WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(120));
+        options.AddArgument("--disable-webauthn");
 
-        Console.WriteLine("\tNavigating to login page...");
-        // Navigate to Notes GitHub auth
-        driver.Navigate().GoToUrl($"https://{HackMdHost}/auth/github");
-
-        Thread.Sleep(10000);
-        
-        // Login to GitHub
-        Console.WriteLine("\tEntering credentials...");
-        IWebElement loginInput = driver.FindElement(By.Id("login_field"));
-        loginInput.SendKeys(GitHubUsername);
-
-        IWebElement passInput = driver.FindElement(By.Id("password"));
-        passInput.SendKeys(GitHubPassword);
-
-        Console.WriteLine("\tSending login...");
-        IWebElement loginBtn = driver.FindElement(By.Name("commit"));
-        loginBtn.Click();
-
-        Console.WriteLine("\tWaiting for 2FA page...");
-        // Wait for passkey prompt
-        wait.Until(webDriver => webDriver.Url.Contains("two-factor"));
-
-        Console.WriteLine("\tFilling 2FA token...");
-        // Grab current TOTP
-        string token = GetTotp();
-
-        IWebElement mfaInput = driver.FindElement(By.Id("app_totp"));
-        mfaInput.SendKeys(token);
-
-        // Wait for return to HackMD
-        Console.WriteLine("\tWaiting for return to HackMD...");
-        wait.Until(webDriver => webDriver.Url.Contains(HackMdHost));
-
-        Console.WriteLine("\tGrabbing delicious Cookies...");
-        // grab cookies
-        var sessionCookie = driver.Manage().Cookies.GetCookieNamed("connect.sid");
-        if (sessionCookie == null)
+        if (_testMode)
         {
-            throw new Exception("No session cookie");
+            // Local visible browser for debugging
+            return new ChromeDriver(options);
         }
 
-        _sessionCookie = sessionCookie.Value;
-        _crsfCookie = driver.Manage().Cookies.GetCookieNamed("_csrf").Value;
-        _useridCookie = driver.Manage().Cookies.GetCookieNamed("userid").Value;
-        
-        // Close the driver
-        driver.Quit();
+        // Headless remote browser for production
+        options.AddArgument("--headless=new");
+        options.AddArgument("--no-sandbox");
+        options.AddArgument("--disable-dev-shm-usage");
+        return new RemoteWebDriver(new Uri(_seleniumHost), options);
+    }
+
+    private void GrabSessionCookie()
+    {
+        using IWebDriver driver = CreateDriver();
+        WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(120));
+
+        try
+        {
+            Console.WriteLine("\tNavigating to login page...");
+            driver.Navigate().GoToUrl($"https://{HackMdHost}/auth/github");
+
+            // Wait for GitHub login form to be ready (React-rendered)
+            Console.WriteLine("\tWaiting for GitHub login form...");
+            wait.Until(webDriver =>
+            {
+                try { return webDriver.FindElement(By.Id("login_field")).Displayed; }
+                catch (NoSuchElementException) { return false; }
+            });
+
+            Console.WriteLine($"\tCurrent URL: {driver.Url}");
+            WaitForInput($"GitHub login form loaded at {driver.Url}");
+
+            // Login to GitHub
+            Console.WriteLine("\tEntering credentials...");
+            IWebElement loginInput = driver.FindElement(By.Id("login_field"));
+            loginInput.Clear();
+            loginInput.SendKeys(GitHubUsername);
+
+            IWebElement passInput = driver.FindElement(By.Id("password"));
+            passInput.Clear();
+            passInput.SendKeys(GitHubPassword);
+
+            WaitForInput("Credentials filled, about to click login");
+
+            Console.WriteLine("\tSending login...");
+            IWebElement loginBtn = driver.FindElement(By.Name("commit"));
+            loginBtn.Click();
+
+            Console.WriteLine("\tWaiting for 2FA page...");
+            wait.Until(webDriver => webDriver.Url.Contains("two-factor") || webDriver.Url.Contains("sessions"));
+            Console.WriteLine($"\tCurrent URL: {driver.Url}");
+            WaitForInput($"2FA page reached at {driver.Url}");
+
+            // GitHub may show a passkey/security key prompt before TOTP.
+            // Try to find and click an "authenticator app" or TOTP link if the
+            // TOTP input isn't immediately visible.
+            Console.WriteLine("\tLooking for TOTP input...");
+            IWebElement mfaInput = WaitForTotpInput(driver, wait);
+
+            Console.WriteLine("\tFilling 2FA token...");
+            string token = GetTotp();
+            mfaInput.Clear();
+            mfaInput.SendKeys(token);
+
+            WaitForInput("TOTP filled, about to submit");
+
+            // Some GitHub 2FA pages require clicking a verify button
+            try
+            {
+                var verifyBtn = driver.FindElement(By.CssSelector("button[type='submit']"));
+                if (verifyBtn.Displayed)
+                    verifyBtn.Click();
+            }
+            catch (NoSuchElementException)
+            {
+                // TOTP auto-submits on some flows
+            }
+
+            // Wait for return to HackMD
+            Console.WriteLine("\tWaiting for return to HackMD...");
+            wait.Until(webDriver => webDriver.Url.Contains(HackMdHost));
+            Console.WriteLine($"\tCurrent URL: {driver.Url}");
+
+            // Give HackMD a moment to set cookies after OAuth callback
+            Thread.Sleep(3000);
+            WaitForInput($"Returned to HackMD at {driver.Url}");
+
+            Console.WriteLine("\tGrabbing delicious Cookies...");
+            // Log all cookies in test mode
+            if (_testMode)
+            {
+                Console.WriteLine("\tAll cookies:");
+                foreach (var c in driver.Manage().Cookies.AllCookies)
+                    Console.WriteLine($"\t\t{c.Name} = {c.Value[..Math.Min(40, c.Value.Length)]}...");
+            }
+
+            var sessionCookie = driver.Manage().Cookies.GetCookieNamed("connect.sid");
+            if (sessionCookie == null)
+            {
+                Console.WriteLine("\tAvailable cookies:");
+                foreach (var c in driver.Manage().Cookies.AllCookies)
+                    Console.WriteLine($"\t\t{c.Name} = {c.Value[..Math.Min(20, c.Value.Length)]}...");
+                throw new Exception("No session cookie found after OAuth flow");
+            }
+
+            _sessionCookie = sessionCookie.Value;
+            _crsfCookie = driver.Manage().Cookies.GetCookieNamed("_csrf")?.Value ?? "";
+            _useridCookie = driver.Manage().Cookies.GetCookieNamed("userid")?.Value ?? "";
+
+            Console.WriteLine("\tCookies obtained successfully.");
+            WaitForInput("Cookies grabbed, about to close browser");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\tAuth failed at URL: {driver.Url}");
+            Console.WriteLine($"\tPage title: {driver.Title}");
+            Console.WriteLine($"\tError: {ex.Message}");
+            if (_testMode)
+            {
+                Console.WriteLine("\t[TEST] Browser left open for inspection. Press ENTER to close...");
+                Console.ReadLine();
+            }
+            throw;
+        }
+        finally
+        {
+            driver.Quit();
+        }
+    }
+
+    private IWebElement WaitForTotpInput(IWebDriver driver, WebDriverWait wait)
+    {
+        // First, try to find the TOTP input directly (old flow) with a short timeout
+        var shortWait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+        try
+        {
+            var input = shortWait.Until(webDriver =>
+            {
+                try
+                {
+                    var el = webDriver.FindElement(By.Id("app_totp"));
+                    return el.Displayed ? el : null;
+                }
+                catch (NoSuchElementException) { return null; }
+            });
+            if (input != null) return input;
+        }
+        catch (WebDriverTimeoutException)
+        {
+            // Not found directly, try alternative flows below
+        }
+
+        // GitHub's newer 2FA page may show passkey/security key prompt first.
+        // Look for a link to switch to TOTP/authenticator app.
+        Console.WriteLine("\tTOTP input not immediately visible, looking for authenticator app link...");
+        string[] linkTexts = {
+            "Use your authenticator app",
+            "Authenticator app",
+            "Use a verification code",
+            "authenticator app",
+            "verification code"
+        };
+
+        foreach (var text in linkTexts)
+        {
+            try
+            {
+                var link = driver.FindElement(By.PartialLinkText(text));
+                if (link.Displayed)
+                {
+                    Console.WriteLine($"\tClicking '{text}' link...");
+                    link.Click();
+                    Thread.Sleep(1000);
+                    break;
+                }
+            }
+            catch (NoSuchElementException) { }
+        }
+
+        // Also try clicking by common button/link patterns
+        try
+        {
+            var totpLinks = driver.FindElements(By.CssSelector("a[href*='totp'], a[href*='app'], button[data-target*='totp']"));
+            foreach (var link in totpLinks)
+            {
+                if (link.Displayed)
+                {
+                    Console.WriteLine($"\tClicking TOTP link: {link.Text}...");
+                    link.Click();
+                    Thread.Sleep(1000);
+                    break;
+                }
+            }
+        }
+        catch (NoSuchElementException) { }
+
+        // Now wait for the TOTP input with multiple possible selectors
+        return wait.Until(webDriver =>
+        {
+            // Try known IDs for the TOTP input
+            string[] selectors = { "#app_totp", "#totp", "input[name='app_totp']", "input[name='otp']", "input[autocomplete='one-time-code']" };
+            foreach (var selector in selectors)
+            {
+                try
+                {
+                    var el = webDriver.FindElement(By.CssSelector(selector));
+                    if (el.Displayed) return el;
+                }
+                catch (NoSuchElementException) { }
+            }
+            return null;
+        });
     }
 
     private bool LoadCachedCookies()
@@ -174,7 +344,7 @@ public class HackMdApi
             var response = await _client.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
-                Console.WriteLine("Cached credentials expired. Re-authenticating..."); 
+                Console.WriteLine("Cached credentials expired. Re-authenticating...");
                 GrabSessionCookie();
                 StoreCachedCookies();
                 Console.WriteLine("Cookies cache created.");
@@ -184,13 +354,13 @@ public class HackMdApi
                 Console.WriteLine("Using cached cookies.");
             }
         }
-      
+
         // Grab notes. as long as we get new notes we increase the counter
         bool returnedNotes = true;
         int page = 1;
         List<NoteMeta> allNotes = new List<NoteMeta>();
         Random random = new Random();
-        
+
         while (returnedNotes)
         {
             var request = CreateRequest($"/api/notes?page={page}");
@@ -201,7 +371,7 @@ public class HackMdApi
             {
                 Console.WriteLine("New AWS WAF token received.");
             }
-            
+
             string responseBody = string.Empty;
             NotesResponse notes = null;
             try
@@ -229,10 +399,9 @@ public class HackMdApi
             }
             else
             {
-                Console.WriteLine("Got caught be the AWS WAF. Waiting for 15 minutes before trying again...");
+                Console.WriteLine("Got caught by the AWS WAF. Waiting for 15 minutes before trying again...");
                 Thread.Sleep(TimeSpan.FromMinutes(15));
             }
-
 
             Thread.Sleep(random.Next(1000, 10000));
         }
@@ -247,7 +416,7 @@ public class HackMdApi
             try
             {
                 string category = "uncategorized";
-                if(note.team != null)
+                if (note.team != null)
                     category = $"team/{note.team.path}";
                 else if (note.owner != null)
                     category = $"user/{note.owner.userpath}";
@@ -278,9 +447,8 @@ public class HackMdApi
             }
             ct++;
         }
-        
-        await File.WriteAllTextAsync(Path.Combine(BackupPath,"error_notes.json"),JsonSerializer.Serialize(badNotes)); 
-        
+
+        await File.WriteAllTextAsync(Path.Combine(BackupPath, "error_notes.json"), JsonSerializer.Serialize(badNotes));
     }
 
     public string BackupPath { get; set; }
@@ -299,16 +467,14 @@ public class HackMdApi
                 { "accept-language", "en-GB,en;q=0.5"},
                 {
                     "cookie",
-                    $"locale=en-GB; indent_type=space; space_units=4; keymap=sublime; connect.sid={_sessionCookie}; _csrf={_crsfCookie}; loginstate=true; userid={_useridCookie}; aws-waf-token=bdbb1976-bc58-4db7-a6a8-430e10d3c9c6:AQoAlYZUH3wHAQAA:ptGNgPAiUpz5V1UyRnJAUP92xWgXrhvNPkNgZy2vD2k6g0oBUL5IxnHJlwxh3tvbUfEijkKsKqT1HBzGWk4LndJ5+r9EFo+Sh/XA42S0bYz9cH3D7chtwhtpXgecbQynGi3MHmVO2pR5P0X/QFvnyK2479gyCgfISM+MyyeDZMxsrnyY8wBOKBfApJwelijsqvRehbQ9/Bz8ZkQjuUa5lsIx8a76XQIpZCJz97gBVoa23LrNluPjS9Diog=="
+                    $"locale=en-GB; indent_type=space; space_units=4; keymap=sublime; connect.sid={_sessionCookie}; _csrf={_crsfCookie}; loginstate=true; userid={_useridCookie}"
                 },
-                { "referer", $"https://{HackMdHost}/dashboard/note/11" },
+                { "referer", $"https://{HackMdHost}/" },
                 {
                     "user-agent",
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 },
-                {"if-none-match", "W/\"69b7-zbbviSdQ+/166WDeKO4GtTKrp24\""},
-                { "x-xsrf-token", "Hw2iROpR-yJZeYLSl2UlY_Kw1EQ2FyWDsAFI" }
-                
+                { "x-xsrf-token", _crsfCookie ?? "" }
             },
         };
     }

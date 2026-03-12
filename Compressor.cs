@@ -12,7 +12,7 @@ public class FileProcessor
     public void CreateTarGz(string outputPath, string inputDirectory)
     {
         using Stream targetStream = File.OpenWrite(outputPath);
-        using var writer = WriterFactory.Open(targetStream, ArchiveType.Tar, CompressionType.GZip);
+        using var writer = WriterFactory.OpenWriter(targetStream, ArchiveType.Tar, new WriterOptions(CompressionType.GZip));
         writer.WriteAll(inputDirectory, searchPattern: "*", SearchOption.AllDirectories);
     }
 

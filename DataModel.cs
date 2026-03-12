@@ -44,7 +44,7 @@ public class Team
     public string createdAt { get; set; }
 }
 
-public class NoteResponse 
+public class NoteResponse
 {
     public Result result { get; set; }
 }
@@ -61,4 +61,5 @@ public class Result
     public List<string> tags { get; set; }
     public string revisionCount { get; set; }
 }
+
 

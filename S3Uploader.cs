@@ -18,9 +18,8 @@ public class S3Uploader
         _bucketName = s3Bucket;
         _s3Client = new AmazonS3Client(s3AccessKey, s3SecretKey, new AmazonS3Config
         {
-            ServiceURL = s3Host, 
+            ServiceURL = s3Host,
             ForcePathStyle = true,
-            SignatureVersion = "s3v4",
         });
 
     }

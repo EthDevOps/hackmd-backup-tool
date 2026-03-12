@@ -2,10 +2,12 @@
 
 using HackMdBackup;
 
+bool testMode = Environment.GetEnvironmentVariable("TEST_MODE") == "1";
+
 string GetConfig(string envName, string defaultValue = "",bool isOptional = false)
 {
     string? envVar = Environment.GetEnvironmentVariable(envName);
-        
+
     if(!isOptional && string.IsNullOrEmpty(envVar) && string.IsNullOrEmpty(defaultValue))
     {
         throw new Exception($"Missing configuration env: {envName}");
@@ -22,20 +24,20 @@ if (!String.IsNullOrEmpty(hcUrl))
     await pingHttp.GetAsync($"{hcUrl}/start");
 }
 
-string gpgPublicKey = GetConfig("GPG_PUBKEY_FILE","foo");
+string gpgPublicKey = GetConfig("GPG_PUBKEY_FILE", "foo", isOptional: testMode);
 string tarFile = GetConfig("BACKUP_TAR_PATH","/tmp/backup.tar.gz");
 string webDriverEndpoint = GetConfig("WEBDRIVER_URL", "http://localhost:4444");
 
-string s3Host = GetConfig("S3_HOST");
-string s3AccessKEy = GetConfig("S3_ACCESS_KEY");
-string s3SecretKey = GetConfig("S3_SECRET_KEY");
-string s3Bucket = GetConfig("S3_BUCKET");
+string s3Host = GetConfig("S3_HOST", isOptional: testMode);
+string s3AccessKEy = GetConfig("S3_ACCESS_KEY", isOptional: testMode);
+string s3SecretKey = GetConfig("S3_SECRET_KEY", isOptional: testMode);
+string s3Bucket = GetConfig("S3_BUCKET", isOptional: testMode);
 
-string cookieCsrf = GetConfig("COOKIE_CSRF");
-string cookieSessionId = GetConfig("COOKIE_SESSION_ID");
-string cookieUserId = GetConfig("COOKIE_USER_ID");
+string cookieCsrf = GetConfig("COOKIE_CSRF", isOptional: true);
+string cookieSessionId = GetConfig("COOKIE_SESSION_ID", isOptional: true);
+string cookieUserId = GetConfig("COOKIE_USER_ID", isOptional: true);
 
-HackMdApi api = new HackMdApi(webDriverEndpoint)
+HackMdApi api = new HackMdApi(webDriverEndpoint, testMode: testMode)
 {
     GitHubUsername = GetConfig("GITHUB_USERNAME"),
     GitHubPassword = GetConfig("GITHUB_PASSWORD"),
@@ -52,6 +54,14 @@ if (!string.IsNullOrEmpty(cookieSessionId))
 
 Console.WriteLine("==> Pulling notes");
 await api.GetAllNotes();
+
+if (testMode)
+{
+    Console.WriteLine("==> Test mode: skipping compress/encrypt/upload");
+    Console.WriteLine($"==> Backup files saved to: {api.BackupPath}");
+    Console.WriteLine("done.");
+    return;
+}
 
 FileProcessor fp = new FileProcessor();
 
