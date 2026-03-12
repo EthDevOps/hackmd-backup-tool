@@ -28,9 +28,11 @@ public class S3Uploader
     {
         try
         {
-            var fileTransferUtility = new TransferUtility(_s3Client);
+            var fileTransferUtility = new TransferUtility(_s3Client, new TransferUtilityConfig
+            {
+                MinSizeBeforePartUpload = 6L * 1024 * 1024 * 1024 // 6GB - effectively disable multipart upload
+            });
 
-            // Option 1. Upload a file. The file name is used as the object key name.
             await fileTransferUtility.UploadAsync(filePath, _bucketName);
         }
         catch (Exception e)
